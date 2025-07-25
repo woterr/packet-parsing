@@ -1,10 +1,29 @@
 import struct
 import socket
+import random
+IP_PROTOCOL_TCP = 6
+from utils import checksum_calc
 
 class IP_Packet():
-    def __init__(self, raw_bytes):
-        self.raw = raw_bytes
-        self._parse()
+    def __init__(self, raw_bytes=None):
+        if raw_bytes:
+            self.raw = raw_bytes
+            self._parse()
+        else:
+            self.version = 4
+            self.ihl = 5
+            self.tos = 0
+            self.total_length = 0
+            self.id = random.randint(0, 65535)
+            self.flags = 0
+            self.frag_offset = 0
+            self.ttl = 64
+            self.protocol = IP_PROTOCOL_TCP
+            self.checksum = 0
+            self.src_ip = ""
+            self.rcv_ip = ""
+            self.payload = b''
+
     
     def _parse(self):
         # !       - Network byte order (big-endian)
@@ -27,19 +46,46 @@ class IP_Packet():
 
         self.ihl = version_ihl & 0x0F    #he last 4 bits
         self.header_length = self.ihl * 4    # IHL is in 4-byte words
-
-        self.tos, self.total_length, self.identification, self.flags_and_fragment_offset, self.ttl, self.protocol, self.header_checksum =  header_tuple[1], header_tuple[2],header_tuple[3],header_tuple[4],header_tuple[5],header_tuple[6], header_tuple[7]
-
+        self.protocol = header_tuple[6]
         self.src_ip = socket.inet_ntoa(header_tuple[8])
         self.rcv_ip = socket.inet_ntoa(header_tuple[9])
-
         self.payload = self.raw[self.header_length:]
 
-    def __str__(self):
-        return (
-            f"IP Packet:\n"
-            f"  From: {self.src_ip} -> To: {self.rcv_ip}\n"
-            f"  Protocol: {self.protocol}  TTL: {self.ttl}\n"
-            f"  Header Length: {self.header_length} bytes  Total Length: {self.total_length} bytes"
-            f"  Checksum: {self.header_checksum}"
+    
+    def _build(self):
+        self.total_length = (self.ihl * 4) + len(self.payload)
+
+        header = struct.pack(
+            '!BBHHHBBH4s4s',
+            (self.version << 4) | self.ihl,
+            self.tos,
+            self.total_length,
+            self.id,
+            (self.flags << 13) | self.frag_offset,
+            self.ttl,
+            self.protocol,
+            0, # Checksum temporarily zero
+            socket.inet_aton(self.src_ip),
+            socket.inet_aton(self.rcv_ip)
         )
+
+        self.checksum = checksum_calc(header)
+
+        header = struct.pack(
+            '!BBHHHBBH4s4s',
+            (self.version << 4) | self.ihl,
+            self.tos,
+            self.total_length,
+            self.id,
+            (self.flags << 13) | self.frag_offset,
+            self.ttl,
+            self.protocol,
+            self.checksum,
+            socket.inet_aton(self.src_ip),
+            socket.inet_aton(self.rcv_ip)
+        )
+
+        return header + self.payload
+
+    def __str__(self):
+        return f"IP Packet: {self.src_ip} -> {self.rcv_ip} (Proto: {self.protocol})"

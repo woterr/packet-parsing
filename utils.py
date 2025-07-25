@@ -24,3 +24,24 @@ def create_tun_interface(name='tun0'):
     fcntl.ioctl(tun_fd, TUNSETIFF, ifreq)
 
     return tun_fd
+
+
+
+def checksum_calc(data):
+    """
+    Standard algorithm (RFC 1071).
+    """
+
+    s = 0
+
+    if len(data)%2 == 1:
+        data += b'\x00'
+
+    for i in range(0, len(data), 2):
+        w = (data[i] << 8) + data[i+1]
+        s+=w
+
+    s = (s >> 16) + (s & 0xffff)
+    s += (s >> 16)
+
+    return ~s & 0xffff
